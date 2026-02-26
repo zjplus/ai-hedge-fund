@@ -11,7 +11,6 @@ import statistics
 from langchain_core.messages import HumanMessage
 from src.graph.state import AgentState, show_agent_reasoning
 from src.utils.progress import progress
-from src.utils.api_key import get_api_key_from_state
 from src.tools.api import (
     get_financial_metrics,
     get_market_cap,
@@ -24,7 +23,6 @@ def valuation_analyst_agent(state: AgentState, agent_id: str = "valuation_analys
     data = state["data"]
     end_date = data["end_date"]
     tickers = data["tickers"]
-    api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
     valuation_analysis: dict[str, dict] = {}
 
     for ticker in tickers:
@@ -36,7 +34,6 @@ def valuation_analyst_agent(state: AgentState, agent_id: str = "valuation_analys
             end_date=end_date,
             period="ttm",
             limit=8,
-            api_key=api_key,
         )
         if not financial_metrics:
             progress.update_status(agent_id, ticker, "Failed: No financial metrics found")
@@ -64,7 +61,6 @@ def valuation_analyst_agent(state: AgentState, agent_id: str = "valuation_analys
             end_date=end_date,
             period="ttm",
             limit=8,
-            api_key=api_key,
         )
         if len(line_items) < 2:
             progress.update_status(agent_id, ticker, "Failed: Insufficient financial line items")
@@ -92,13 +88,18 @@ def valuation_analyst_agent(state: AgentState, agent_id: str = "valuation_analys
         # Enhanced Discounted Cash Flow with WACC and scenarios
         progress.update_status(agent_id, ticker, "Calculating WACC and enhanced DCF")
         
-        # Calculate WACC
+        # Calculate WACC with market-specific parameters
+        from src.tools.api import get_market_params
+        market_params = get_market_params(ticker)
         wacc = calculate_wacc(
             market_cap=most_recent_metrics.market_cap or 0,
             total_debt=getattr(li_curr, 'total_debt', None),
             cash=getattr(li_curr, 'cash_and_equivalents', None),
             interest_coverage=most_recent_metrics.interest_coverage,
             debt_to_equity=most_recent_metrics.debt_to_equity,
+            risk_free_rate=market_params["risk_free_rate"],
+            market_risk_premium=market_params["equity_risk_premium"],
+            corporate_tax_rate=market_params["corporate_tax_rate"],
         )
         
         # Prepare FCF history for enhanced DCF
@@ -136,7 +137,7 @@ def valuation_analyst_agent(state: AgentState, agent_id: str = "valuation_analys
         # ------------------------------------------------------------------
         # Aggregate & signal
         # ------------------------------------------------------------------
-        market_cap = get_market_cap(ticker, end_date, api_key=api_key)
+        market_cap = get_market_cap(ticker, end_date)
         if not market_cap:
             progress.update_status(agent_id, ticker, "Failed: Market cap unavailable")
             continue
@@ -343,7 +344,8 @@ def calculate_wacc(
     debt_to_equity: float | None,
     beta_proxy: float = 1.0,
     risk_free_rate: float = 0.045,
-    market_risk_premium: float = 0.06
+    market_risk_premium: float = 0.06,
+    corporate_tax_rate: float = 0.25,
 ) -> float:
     """Calculate WACC using available financial data."""
     
@@ -365,8 +367,8 @@ def calculate_wacc(
         weight_equity = market_cap / total_value
         weight_debt = net_debt / total_value
         
-        # Tax shield (assume 25% corporate tax rate)
-        wacc = (weight_equity * cost_of_equity) + (weight_debt * cost_of_debt * 0.75)
+        # Tax shield using market-specific corporate tax rate
+        wacc = (weight_equity * cost_of_equity) + (weight_debt * cost_of_debt * (1 - corporate_tax_rate))
     else:
         wacc = cost_of_equity
     

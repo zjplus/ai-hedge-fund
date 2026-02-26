@@ -9,7 +9,6 @@ import json
 
 from src.graph.state import AgentState, show_agent_reasoning
 from src.tools.api import get_company_news
-from src.utils.api_key import get_api_key_from_state
 from src.utils.llm import call_llm
 from src.utils.progress import progress
 from typing_extensions import Literal
@@ -40,7 +39,6 @@ def news_sentiment_agent(state: AgentState, agent_id: str = "news_sentiment_agen
     data = state.get("data", {})
     end_date = data.get("end_date")
     tickers = data.get("tickers")
-    api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
     sentiment_analysis = {}
 
     for ticker in tickers:
@@ -49,11 +47,11 @@ def news_sentiment_agent(state: AgentState, agent_id: str = "news_sentiment_agen
             ticker=ticker,
             end_date=end_date,
             limit=100,
-            api_key=api_key,
         )
 
         news_signals = []
         sentiment_confidences = {}  # Store confidence scores for each article
+        sentiments_classified_by_llm = 0
         
         if company_news:
             # Check the 10 most recent articles
@@ -61,7 +59,6 @@ def news_sentiment_agent(state: AgentState, agent_id: str = "news_sentiment_agen
             articles_without_sentiment = [news for news in recent_articles if news.sentiment is None]
             
             # Analyze only the 5 most recent articles without sentiment to reduce LLM calls
-            sentiments_classified_by_llm = 0
             if articles_without_sentiment:
               # We only take the first 5 articles, but this is configurable
               num_articles_to_analyze = 5
@@ -74,13 +71,12 @@ def news_sentiment_agent(state: AgentState, agent_id: str = "news_sentiment_agen
                 # Note: this is an opportunity for improvement!
                 progress.update_status(agent_id, ticker, f"Analyzing sentiment for article {idx + 1} of {len(articles_to_analyze)}")
                 prompt = (
-                    f"Please analyze the sentiment of the following news headline "
-                    f"with the following context: "
-                    f"The stock is {ticker}. "
-                    f"Determine if sentiment is 'positive', 'negative', or 'neutral' for the stock {ticker} only. "
-                    f"Also provide a confidence score for your prediction from 0 to 100. "
-                    f"Respond in JSON format.\n\n"
-                    f"Headline: {news.title}"
+                    f"请分析以下新闻标题的情感倾向。"
+                    f"背景信息：这支股票是 {ticker}。"
+                    f"仅针对股票 {ticker} 判断情感是 'positive'（正面）、'negative'（负面）还是 'neutral'（中性）。"
+                    f"同时提供你预测的置信度分数（0 到 100）。"
+                    f"请以 JSON 格式回复。\n\n"
+                    f"标题: {news.title}"
                 )
                 response = call_llm(prompt, Sentiment, agent_name=agent_id, state=state)
                 if response:

@@ -7,7 +7,6 @@ import json
 from typing_extensions import Literal
 from src.utils.progress import progress
 from src.utils.llm import call_llm
-from src.utils.api_key import get_api_key_from_state
 
 
 class BillAckmanSignal(BaseModel):
@@ -25,13 +24,12 @@ def bill_ackman_agent(state: AgentState, agent_id: str = "bill_ackman_agent"):
     data = state["data"]
     end_date = data["end_date"]
     tickers = data["tickers"]
-    api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
     analysis_data = {}
     ackman_analysis = {}
     
     for ticker in tickers:
         progress.update_status(agent_id, ticker, "Fetching financial metrics")
-        metrics = get_financial_metrics(ticker, end_date, period="annual", limit=5, api_key=api_key)
+        metrics = get_financial_metrics(ticker, end_date, period="annual", limit=5)
         
         progress.update_status(agent_id, ticker, "Gathering financial line items")
         # Request multiple periods of data (annual or TTM) for a more robust long-term view.
@@ -52,11 +50,10 @@ def bill_ackman_agent(state: AgentState, agent_id: str = "bill_ackman_agent"):
             end_date,
             period="annual",
             limit=5,
-            api_key=api_key,
         )
         
         progress.update_status(agent_id, ticker, "Getting market cap")
-        market_cap = get_market_cap(ticker, end_date, api_key=api_key)
+        market_cap = get_market_cap(ticker, end_date)
         
         progress.update_status(agent_id, ticker, "Analyzing business quality")
         quality_analysis = analyze_business_quality(metrics, financial_line_items)
@@ -410,29 +407,29 @@ def generate_ackman_output(
     template = ChatPromptTemplate.from_messages([
         (
             "system",
-            """You are a Bill Ackman AI agent, making investment decisions using his principles:
+            """你是 Bill Ackman AI 智能体，使用他的投资原则做出投资决策：
 
-            1. Seek high-quality businesses with durable competitive advantages (moats), often in well-known consumer or service brands.
-            2. Prioritize consistent free cash flow and growth potential over the long term.
-            3. Advocate for strong financial discipline (reasonable leverage, efficient capital allocation).
-            4. Valuation matters: target intrinsic value with a margin of safety.
-            5. Consider activism where management or operational improvements can unlock substantial upside.
-            6. Concentrate on a few high-conviction investments.
+            1. 寻找具有持久竞争优势（护城河）的高质量企业，通常是知名消费或服务品牌。
+            2. 优先关注长期的持续自由现金流和增长潜力。
+            3. 提倡强有力的财务纪律（合理杠杆、高效资本配置）。
+            4. 估值很重要：以安全边际为目标确定内在价值。
+            5. 在管理或运营改善可释放重大上行空间时考虑维权主义。
+            6. 集中于少数高确信度投资。
 
-            In your reasoning:
-            - Emphasize brand strength, moat, or unique market positioning.
-            - Review free cash flow generation and margin trends as key signals.
-            - Analyze leverage, share buybacks, and dividends as capital discipline metrics.
-            - Provide a valuation assessment with numerical backup (DCF, multiples, etc.).
-            - Identify any catalysts for activism or value creation (e.g., cost cuts, better capital allocation).
-            - Use a confident, analytic, and sometimes confrontational tone when discussing weaknesses or opportunities.
+            在推理中：
+            - 强调品牌实力、护城河或独特市场定位。
+            - 将自由现金流生成和利润率趋势作为关键信号。
+            - 分析杠杆、回购和股息等资本纪律指标。
+            - 提供带有数字支持的估值评估（DCF、倍数等）。
+            - 识别维权或价值创造的催化剂（如成本削减、更好的资本配置）。
+            - 讨论弱点或机会时使用自信、分析性、偶尔对抗性的语气。
 
-            Return your final recommendation (signal: bullish, neutral, or bearish) with a 0-100 confidence and a thorough reasoning section.
+            请用中文回答。返回最终建议（signal: bullish, neutral, 或 bearish），附带 0-100 的置信度和详细推理。
             """
         ),
         (
             "human",
-            """Based on the following analysis, create an Ackman-style investment signal.
+            """基于以下分析，创建 Ackman 风格的投资信号。
 
             Analysis Data for {ticker}:
             {analysis_data}

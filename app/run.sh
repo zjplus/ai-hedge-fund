@@ -87,31 +87,30 @@ check_prerequisites() {
         missing_deps+=("Python 3 (https://python.org/)")
     fi
     
-    # Check for Poetry - offer to install if missing
-    if ! command_exists poetry; then
-        print_warning "Poetry is not installed."
-        print_status "Poetry is required to manage Python dependencies for this project."
+    # Check for uv - offer to install if missing
+    if ! command_exists uv; then
+        print_warning "uv is not installed."
+        print_status "uv is required to manage Python dependencies for this project."
         echo ""
-        read -p "Would you like to install Poetry automatically? (y/N): " -n 1 -r
+        read -p "Would you like to install uv automatically? (y/N): " -n 1 -r
         echo ""
         if [[ $REPLY =~ ^[Yy]$ ]]; then
-            print_status "Installing Poetry..."
-            if python3 -m pip install poetry; then
-                print_success "Poetry installed successfully!"
+            print_status "Installing uv..."
+            if curl -LsSf https://astral.sh/uv/install.sh | sh; then
+                print_success "uv installed successfully!"
                 print_status "Refreshing environment..."
-                # Try to refresh the PATH for this session
-                export PATH="$HOME/.local/bin:$PATH"
-                if ! command_exists poetry; then
-                    print_warning "Poetry may not be in PATH. You might need to restart your terminal."
+                export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+                if ! command_exists uv; then
+                    print_warning "uv may not be in PATH. You might need to restart your terminal."
                     print_warning "Alternatively, try: source ~/.bashrc or source ~/.zshrc"
                 fi
             else
-                print_error "Failed to install Poetry automatically."
-                print_error "Please install Poetry manually from https://python-poetry.org/"
+                print_error "Failed to install uv automatically."
+                print_error "Please install uv manually from https://docs.astral.sh/uv/"
                 exit 1
             fi
         else
-            missing_deps+=("Poetry (https://python-poetry.org/)")
+            missing_deps+=("uv (https://docs.astral.sh/uv/)")
         fi
     fi
     
@@ -173,24 +172,24 @@ setup_database() {
 install_backend() {
     print_status "Installing backend dependencies..."
     
-    cd backend
+    cd ..
     
     # Check if dependencies are actually installed and working
-    if poetry run python -c "import uvicorn; import fastapi" >/dev/null 2>&1; then
+    if uv run python -c "import uvicorn; import fastapi" >/dev/null 2>&1; then
         print_success "Backend dependencies already installed!"
     else
-        print_status "Installing Python dependencies with Poetry..."
-        poetry install
-        if poetry run python -c "import uvicorn; import fastapi" >/dev/null 2>&1; then
+        print_status "Installing Python dependencies with uv..."
+        uv sync
+        if uv run python -c "import uvicorn; import fastapi" >/dev/null 2>&1; then
             print_success "Backend dependencies installed!"
         else
             print_error "Failed to install backend dependencies properly"
-            print_error "Try running: cd backend && poetry install --sync"
+            print_error "Try running: uv sync"
             exit 1
         fi
     fi
     
-    cd ..
+    cd app
 }
 
 # Function to install frontend dependencies
@@ -250,7 +249,7 @@ start_services() {
     print_status "Starting backend server..."
     # Run from the app directory (parent of backend) to ensure proper Python imports
     cd ..
-    poetry run uvicorn app.backend.main:app --reload --host 127.0.0.1 --port 8000 > "$LOG_DIR/backend.log" 2>&1 &
+    uv run uvicorn app.backend.main:app --reload --host 127.0.0.1 --port 8000 > "$LOG_DIR/backend.log" 2>&1 &
     BACKEND_PID=$!
     cd app
     
@@ -355,8 +354,8 @@ if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
     echo "Usage: ./run.sh"
     echo ""
     echo "This script will:"
-    echo "  1. Check for required dependencies (Node.js, npm, Python, Poetry)"
-    echo "  2. Install backend dependencies using Poetry"
+    echo "  1. Check for required dependencies (Node.js, npm, Python, uv)"
+    echo "  2. Install backend dependencies using uv"
     echo "  3. Install frontend dependencies using npm"
     echo "  4. Start both the backend API server and frontend development server"
     echo "  5. Automatically initialize SQLite database on first run"
@@ -364,7 +363,7 @@ if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
     echo "Requirements:"
     echo "  - Node.js and npm (https://nodejs.org/)"
     echo "  - Python 3 (https://python.org/)"
-    echo "  - Poetry (https://python-poetry.org/)"
+    echo "  - uv (https://docs.astral.sh/uv/)"
     echo ""
     echo "After running, you can access:"
     echo "  - Frontend: http://localhost:5173"

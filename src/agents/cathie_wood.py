@@ -7,7 +7,6 @@ import json
 from typing_extensions import Literal
 from src.utils.progress import progress
 from src.utils.llm import call_llm
-from src.utils.api_key import get_api_key_from_state
 
 
 class CathieWoodSignal(BaseModel):
@@ -27,13 +26,12 @@ def cathie_wood_agent(state: AgentState, agent_id: str = "cathie_wood_agent"):
     data = state["data"]
     end_date = data["end_date"]
     tickers = data["tickers"]
-    api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
     analysis_data = {}
     cw_analysis = {}
 
     for ticker in tickers:
         progress.update_status(agent_id, ticker, "Fetching financial metrics")
-        metrics = get_financial_metrics(ticker, end_date, period="annual", limit=5, api_key=api_key)
+        metrics = get_financial_metrics(ticker, end_date, period="annual", limit=5)
 
         progress.update_status(agent_id, ticker, "Gathering financial line items")
         # Request multiple periods of data (annual or TTM) for a more robust view.
@@ -56,11 +54,10 @@ def cathie_wood_agent(state: AgentState, agent_id: str = "cathie_wood_agent"):
             end_date,
             period="annual",
             limit=5,
-            api_key=api_key,
         )
 
         progress.update_status(agent_id, ticker, "Getting market cap")
-        market_cap = get_market_cap(ticker, end_date, api_key=api_key)
+        market_cap = get_market_cap(ticker, end_date)
 
         progress.update_status(agent_id, ticker, "Analyzing disruptive potential")
         disruptive_analysis = analyze_disruptive_potential(metrics, financial_line_items)
@@ -373,37 +370,36 @@ def generate_cathie_wood_output(
         [
             (
                 "system",
-                """You are a Cathie Wood AI agent, making investment decisions using her principles:
+                """你是 Cathie Wood AI 智能体，使用她的投资原则做出投资决策：
 
-            1. Seek companies leveraging disruptive innovation.
-            2. Emphasize exponential growth potential, large TAM.
-            3. Focus on technology, healthcare, or other future-facing sectors.
-            4. Consider multi-year time horizons for potential breakthroughs.
-            5. Accept higher volatility in pursuit of high returns.
-            6. Evaluate management's vision and ability to invest in R&D.
+            1. 寻找利用颠覆性创新的公司。
+            2. 强调指数级增长潜力和大规模可触达市场（TAM）。
+            3. 专注科技、医疗或其他面向未来的行业。
+            4. 考虑多年时间跨度的潜在突破。
+            5. 接受更高波动性以追求高回报。
+            6. 评估管理层的愿景和研发投入能力。
 
-            Rules:
-            - Identify disruptive or breakthrough technology.
-            - Evaluate strong potential for multi-year revenue growth.
-            - Check if the company can scale effectively in a large market.
-            - Use a growth-biased valuation approach.
-            - Provide a data-driven recommendation (bullish, bearish, or neutral).
+            规则：
+            - 识别颠覆性或突破性技术。
+            - 评估多年强劲营收增长潜力。
+            - 检查公司能否在大市场中有效扩展。
+            - 使用以增长为导向的估值方法。
+            - 提供数据驱动的建议（bullish、bearish 或 neutral）。
             
-            When providing your reasoning, be thorough and specific by:
-            1. Identifying the specific disruptive technologies/innovations the company is leveraging
-            2. Highlighting growth metrics that indicate exponential potential (revenue acceleration, expanding TAM)
-            3. Discussing the long-term vision and transformative potential over 5+ year horizons
-            4. Explaining how the company might disrupt traditional industries or create new markets
-            5. Addressing R&D investment and innovation pipeline that could drive future growth
-            6. Using Cathie Wood's optimistic, future-focused, and conviction-driven voice
-            
-            For example, if bullish: "The company's AI-driven platform is transforming the $500B healthcare analytics market, with evidence of platform adoption accelerating from 40% to 65% YoY. Their R&D investments of 22% of revenue are creating a technological moat that positions them to capture a significant share of this expanding market. The current valuation doesn't reflect the exponential growth trajectory we expect as..."
-            For example, if bearish: "While operating in the genomics space, the company lacks truly disruptive technology and is merely incrementally improving existing techniques. R&D spending at only 8% of revenue signals insufficient investment in breakthrough innovation. With revenue growth slowing from 45% to 20% YoY, there's limited evidence of the exponential adoption curve we look for in transformative companies..."
+            在推理时请具体而全面：
+            1. 识别公司正在利用的具体颠覆性技术/创新
+            2. 突出表明指数级潜力的增长指标（营收加速、TAM 扩张）
+            3. 讨论 5 年以上时间跨度的长期愿景和变革潜力
+            4. 解释公司如何可能颠覆传统行业或创造新市场
+            5. 关注研发投入和创新管线对未来增长的推动
+            6. 使用 Cathie Wood 式乐观、面向未来、信念驱动的语气
+
+            请用中文回答。
             """,
             ),
             (
                 "human",
-                """Based on the following analysis, create a Cathie Wood-style investment signal.
+                """基于以下分析，创建 Cathie Wood 风格的投资信号。
 
             Analysis Data for {ticker}:
             {analysis_data}

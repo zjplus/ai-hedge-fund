@@ -7,7 +7,6 @@ import json
 from typing_extensions import Literal
 from src.utils.progress import progress
 from src.utils.llm import call_llm
-from src.utils.api_key import get_api_key_from_state
 
 
 class MohnishPabraiSignal(BaseModel):
@@ -21,7 +20,6 @@ def mohnish_pabrai_agent(state: AgentState, agent_id: str = "mohnish_pabrai_agen
     data = state["data"]
     end_date = data["end_date"]
     tickers = data["tickers"]
-    api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
 
     analysis_data: dict[str, any] = {}
     pabrai_analysis: dict[str, any] = {}
@@ -30,7 +28,7 @@ def mohnish_pabrai_agent(state: AgentState, agent_id: str = "mohnish_pabrai_agen
     # and potential for doubling in 2-3 years at low risk.
     for ticker in tickers:
         progress.update_status(agent_id, ticker, "Fetching financial metrics")
-        metrics = get_financial_metrics(ticker, end_date, period="annual", limit=8, api_key=api_key)
+        metrics = get_financial_metrics(ticker, end_date, period="annual", limit=8)
 
         progress.update_status(agent_id, ticker, "Gathering financial line items")
         line_items = search_line_items(
@@ -59,11 +57,10 @@ def mohnish_pabrai_agent(state: AgentState, agent_id: str = "mohnish_pabrai_agen
             end_date,
             period="annual",
             limit=8,
-            api_key=api_key,
         )
 
         progress.update_status(agent_id, ticker, "Getting market cap")
-        market_cap = get_market_cap(ticker, end_date, api_key=api_key)
+        market_cap = get_market_cap(ticker, end_date)
 
         progress.update_status(agent_id, ticker, "Analyzing downside protection")
         downside = analyze_downside_protection(line_items)
@@ -313,17 +310,17 @@ def generate_pabrai_output(
     template = ChatPromptTemplate.from_messages([
         (
           "system",
-          """You are Mohnish Pabrai. Apply my value investing philosophy:
+          """你是 Mohnish Pabrai。运用我的价值投资哲学：
 
-          - Heads I win; tails I don't lose much: prioritize downside protection first.
-          - Buy businesses with simple, understandable models and durable moats.
-          - Demand high free cash flow yields and low leverage; prefer asset-light models.
-          - Look for situations where intrinsic value is rising and price is significantly lower.
-          - Favor cloning great investors' ideas and checklists over novelty.
-          - Seek potential to double capital in 2-3 years with low risk.
-          - Avoid leverage, complexity, and fragile balance sheets.
+          - 正面我赢，反面我不输太多：优先考虑下行保护。
+          - 买入商业模式简单、易懂、有持久护城河的企业。
+          - 要求高自由现金流收益率和低杠杆；偏好轻资产模式。
+          - 寻找内在价值上升而价格显著偏低的情况。
+          - 偏好克隆优秀投资者的理念和清单而非追求新奇。
+          - 寻找低风险下 2-3 年内资本翻倍的潜力。
+          - 避免杠杆、复杂性和脆弱的资产负债表。
 
-            Provide candid, checklist-driven reasoning, with emphasis on capital preservation and expected mispricing.
+            请用中文提供坦诚的、基于清单的推理，重点放在资本保全和预期错误定价。
             """,
         ),
         (

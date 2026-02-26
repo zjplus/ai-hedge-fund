@@ -13,7 +13,6 @@ from src.tools.api import (
     get_market_cap,
     search_line_items,
 )
-from src.utils.api_key import get_api_key_from_state
 from src.utils.llm import call_llm
 from src.utils.progress import progress
 
@@ -36,7 +35,6 @@ def aswath_damodaran_agent(state: AgentState, agent_id: str = "aswath_damodaran_
     data      = state["data"]
     end_date  = data["end_date"]
     tickers   = data["tickers"]
-    api_key  = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
 
     analysis_data: dict[str, dict] = {}
     damodaran_signals: dict[str, dict] = {}
@@ -44,7 +42,7 @@ def aswath_damodaran_agent(state: AgentState, agent_id: str = "aswath_damodaran_
     for ticker in tickers:
         # ─── Fetch core data ────────────────────────────────────────────────────
         progress.update_status(agent_id, ticker, "Fetching financial metrics")
-        metrics = get_financial_metrics(ticker, end_date, period="ttm", limit=5, api_key=api_key)
+        metrics = get_financial_metrics(ticker, end_date, period="ttm", limit=5)
 
         progress.update_status(agent_id, ticker, "Fetching financial line items")
         line_items = search_line_items(
@@ -60,18 +58,17 @@ def aswath_damodaran_agent(state: AgentState, agent_id: str = "aswath_damodaran_
                 "total_debt",
             ],
             end_date,
-            api_key=api_key,
         )
 
         progress.update_status(agent_id, ticker, "Getting market cap")
-        market_cap = get_market_cap(ticker, end_date, api_key=api_key)
+        market_cap = get_market_cap(ticker, end_date)
 
         # ─── Analyses ───────────────────────────────────────────────────────────
         progress.update_status(agent_id, ticker, "Analyzing growth and reinvestment")
         growth_analysis = analyze_growth_and_reinvestment(metrics, line_items)
 
         progress.update_status(agent_id, ticker, "Analyzing risk profile")
-        risk_analysis = analyze_risk_profile(metrics, line_items)
+        risk_analysis = analyze_risk_profile(metrics, line_items, ticker=ticker)
 
         progress.update_status(agent_id, ticker, "Calculating intrinsic value (DCF)")
         intrinsic_val_analysis = calculate_intrinsic_value_dcf(metrics, line_items, risk_analysis)
@@ -190,7 +187,7 @@ def analyze_growth_and_reinvestment(metrics: list, line_items: list) -> dict[str
     return {"score": score, "max_score": max_score, "details": "; ".join(details), "metrics": latest.model_dump()}
 
 
-def analyze_risk_profile(metrics: list, line_items: list) -> dict[str, any]:
+def analyze_risk_profile(metrics: list, line_items: list, ticker: str = "") -> dict[str, any]:
     """
     Risk score (0-3):
       +1  Beta < 1.3
@@ -240,7 +237,7 @@ def analyze_risk_profile(metrics: list, line_items: list) -> dict[str, any]:
         details.append("Interest coverage NA")
 
     # Compute cost of equity for later use
-    cost_of_equity = estimate_cost_of_equity(beta)
+    cost_of_equity = estimate_cost_of_equity(beta, ticker=ticker)
 
     return {
         "score": score,
@@ -347,10 +344,12 @@ def calculate_intrinsic_value_dcf(metrics: list, line_items: list, risk_analysis
     }
 
 
-def estimate_cost_of_equity(beta: float | None) -> float:
-    """CAPM: r_e = r_f + β × ERP (use Damodaran's long-term averages)."""
-    risk_free = 0.04          # 10-yr US Treasury proxy
-    erp = 0.05                # long-run US equity risk premium
+def estimate_cost_of_equity(beta: float | None, ticker: str = "") -> float:
+    """CAPM: r_e = r_f + β × ERP，根据市场自适应参数。"""
+    from src.tools.api import get_market_params
+    params = get_market_params(ticker)
+    risk_free = params["risk_free_rate"]
+    erp = params["equity_risk_premium"]
     beta = beta if beta is not None else 1.0
     return risk_free + beta * erp
 
@@ -374,15 +373,15 @@ def generate_damodaran_output(
         [
             (
                 "system",
-                """You are Aswath Damodaran, Professor of Finance at NYU Stern.
-                Use your valuation framework to issue trading signals on US equities.
+                """你是 Aswath Damodaran，纽约大学斯特恩商学院金融学教授。
+                使用你的估值框架对股票发出交易信号。
 
-                Speak with your usual clear, data-driven tone:
-                  ◦ Start with the company "story" (qualitatively)
-                  ◦ Connect that story to key numerical drivers: revenue growth, margins, reinvestment, risk
-                  ◦ Conclude with value: your FCFF DCF estimate, margin of safety, and relative valuation sanity checks
-                  ◦ Highlight major uncertainties and how they affect value
-                Return ONLY the JSON specified below.""",
+                用你一贯清晰、数据驱动的风格分析：
+                  ◦ 从公司"故事"入手（定性分析）
+                  ◦ 将故事与关键数字驱动因素联系：营收增长、利润率、再投资、风险
+                  ◦ 以价值收尾：FCFF DCF 估值、安全边际、相对估值交叉验证
+                  ◦ 突出主要不确定性及其对价值的影响
+                请用中文回答。仅返回下方指定的 JSON。""",
             ),
             (
                 "human",

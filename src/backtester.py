@@ -14,27 +14,27 @@ def run_backtest(backtester: BacktestEngine) -> PerformanceMetrics | None:
     """Run the backtest with graceful KeyboardInterrupt handling."""
     try:
         performance_metrics = backtester.run_backtest()
-        print(f"\n{Fore.GREEN}Backtest completed successfully!{Style.RESET_ALL}")
+        print(f"\n{Fore.GREEN}回测已成功完成！{Style.RESET_ALL}")
         return performance_metrics
     except KeyboardInterrupt:
-        print(f"\n\n{Fore.YELLOW}Backtest interrupted by user.{Style.RESET_ALL}")
+        print(f"\n\n{Fore.YELLOW}回测已被用户中断。{Style.RESET_ALL}")
         
         # Try to show any partial results that were computed
         try:
             portfolio_values = backtester.get_portfolio_values()
             if len(portfolio_values) > 1:
-                print(f"{Fore.GREEN}Partial results available.{Style.RESET_ALL}")
+                print(f"{Fore.GREEN}部分结果可用。{Style.RESET_ALL}")
                 
                 # Show basic summary from the available portfolio values
                 first_value = portfolio_values[0]["Portfolio Value"]
                 last_value = portfolio_values[-1]["Portfolio Value"]
                 total_return = ((last_value - first_value) / first_value) * 100
                 
-                print(f"{Fore.CYAN}Initial Portfolio Value: ${first_value:,.2f}{Style.RESET_ALL}")
-                print(f"{Fore.CYAN}Final Portfolio Value: ${last_value:,.2f}{Style.RESET_ALL}")
-                print(f"{Fore.CYAN}Total Return: {total_return:+.2f}%{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}初始组合价值: ${first_value:,.2f}{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}最终组合价值: ${last_value:,.2f}{Style.RESET_ALL}")
+                print(f"{Fore.CYAN}总收益率: {total_return:+.2f}%{Style.RESET_ALL}")
         except Exception as e:
-            print(f"{Fore.RED}Could not generate partial results: {str(e)}{Style.RESET_ALL}")
+            print(f"{Fore.RED}无法生成部分结果: {str(e)}{Style.RESET_ALL}")
         
         sys.exit(0)
 

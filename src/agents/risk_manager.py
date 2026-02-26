@@ -1,11 +1,10 @@
 from langchain_core.messages import HumanMessage
 from src.graph.state import AgentState, show_agent_reasoning
 from src.utils.progress import progress
-from src.tools.api import get_prices, prices_to_df
+from src.tools.api import get_prices, prices_to_df, get_market_params
 import json
 import numpy as np
 import pandas as pd
-from src.utils.api_key import get_api_key_from_state
 
 ##### Risk Management Agent #####
 def risk_management_agent(state: AgentState, agent_id: str = "risk_management_agent"):
@@ -13,7 +12,6 @@ def risk_management_agent(state: AgentState, agent_id: str = "risk_management_ag
     portfolio = state["data"]["portfolio"]
     data = state["data"]
     tickers = data["tickers"]
-    api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
     
     # Initialize risk analysis for each ticker
     risk_analysis = {}
@@ -26,20 +24,21 @@ def risk_management_agent(state: AgentState, agent_id: str = "risk_management_ag
     
     for ticker in all_tickers:
         progress.update_status(agent_id, ticker, "Fetching price data and calculating volatility")
+        market_params = get_market_params(ticker)
+        trading_days = market_params["trading_days_per_year"]
         
         prices = get_prices(
             ticker=ticker,
             start_date=data["start_date"],
             end_date=data["end_date"],
-            api_key=api_key,
         )
 
         if not prices:
             progress.update_status(agent_id, ticker, "Warning: No price data found")
             volatility_data[ticker] = {
-                "daily_volatility": 0.05,  # Default fallback volatility (5% daily)
-                "annualized_volatility": 0.05 * np.sqrt(252),
-                "volatility_percentile": 100,  # Assume high risk if no data
+                "daily_volatility": 0.05,
+                "annualized_volatility": 0.05 * np.sqrt(trading_days),
+                "volatility_percentile": 100,
                 "data_points": 0
             }
             continue
@@ -51,7 +50,7 @@ def risk_management_agent(state: AgentState, agent_id: str = "risk_management_ag
             current_prices[ticker] = current_price
             
             # Calculate volatility metrics
-            volatility_metrics = calculate_volatility_metrics(prices_df)
+            volatility_metrics = calculate_volatility_metrics(prices_df, trading_days=trading_days)
             volatility_data[ticker] = volatility_metrics
 
             # Store returns for correlation analysis (use close-to-close returns)
@@ -69,7 +68,7 @@ def risk_management_agent(state: AgentState, agent_id: str = "risk_management_ag
             current_prices[ticker] = 0
             volatility_data[ticker] = {
                 "daily_volatility": 0.05,
-                "annualized_volatility": 0.05 * np.sqrt(252),
+                "annualized_volatility": 0.05 * np.sqrt(trading_days),
                 "volatility_percentile": 100,
                 "data_points": len(prices_df) if not prices_df.empty else 0
             }
@@ -219,12 +218,12 @@ def risk_management_agent(state: AgentState, agent_id: str = "risk_management_ag
     }
 
 
-def calculate_volatility_metrics(prices_df: pd.DataFrame, lookback_days: int = 60) -> dict:
+def calculate_volatility_metrics(prices_df: pd.DataFrame, lookback_days: int = 60, trading_days: int = 252) -> dict:
     """Calculate comprehensive volatility metrics from price data."""
     if len(prices_df) < 2:
         return {
             "daily_volatility": 0.05,
-            "annualized_volatility": 0.05 * np.sqrt(252),
+            "annualized_volatility": 0.05 * np.sqrt(trading_days),
             "volatility_percentile": 100,
             "data_points": len(prices_df)
         }
@@ -235,7 +234,7 @@ def calculate_volatility_metrics(prices_df: pd.DataFrame, lookback_days: int = 6
     if len(daily_returns) < 2:
         return {
             "daily_volatility": 0.05,
-            "annualized_volatility": 0.05 * np.sqrt(252),
+            "annualized_volatility": 0.05 * np.sqrt(trading_days),
             "volatility_percentile": 100,
             "data_points": len(daily_returns)
         }
@@ -245,7 +244,7 @@ def calculate_volatility_metrics(prices_df: pd.DataFrame, lookback_days: int = 6
     
     # Calculate volatility metrics
     daily_vol = recent_returns.std()
-    annualized_vol = daily_vol * np.sqrt(252)  # Annualize assuming 252 trading days
+    annualized_vol = daily_vol * np.sqrt(trading_days)
     
     # Calculate percentile rank of recent volatility vs historical volatility
     if len(daily_returns) >= 30:  # Need sufficient history for percentile calculation

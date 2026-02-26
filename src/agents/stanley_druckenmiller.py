@@ -15,7 +15,6 @@ from typing_extensions import Literal
 from src.utils.progress import progress
 from src.utils.llm import call_llm
 import statistics
-from src.utils.api_key import get_api_key_from_state
 
 class StanleyDruckenmillerSignal(BaseModel):
     signal: Literal["bullish", "bearish", "neutral"]
@@ -37,13 +36,12 @@ def stanley_druckenmiller_agent(state: AgentState, agent_id: str = "stanley_druc
     start_date = data["start_date"]
     end_date = data["end_date"]
     tickers = data["tickers"]
-    api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
     analysis_data = {}
     druck_analysis = {}
 
     for ticker in tickers:
         progress.update_status(agent_id, ticker, "Fetching financial metrics")
-        metrics = get_financial_metrics(ticker, end_date, period="annual", limit=5, api_key=api_key)
+        metrics = get_financial_metrics(ticker, end_date, period="annual", limit=5)
 
         progress.update_status(agent_id, ticker, "Gathering financial line items")
         # Include relevant line items for Stan Druckenmiller's approach:
@@ -72,20 +70,19 @@ def stanley_druckenmiller_agent(state: AgentState, agent_id: str = "stanley_druc
             end_date,
             period="annual",
             limit=5,
-            api_key=api_key,
         )
 
         progress.update_status(agent_id, ticker, "Getting market cap")
-        market_cap = get_market_cap(ticker, end_date, api_key=api_key)
+        market_cap = get_market_cap(ticker, end_date)
 
         progress.update_status(agent_id, ticker, "Fetching insider trades")
-        insider_trades = get_insider_trades(ticker, end_date, limit=50, api_key=api_key)
+        insider_trades = get_insider_trades(ticker, end_date, limit=50)
 
         progress.update_status(agent_id, ticker, "Fetching company news")
-        company_news = get_company_news(ticker, end_date, limit=50, api_key=api_key)
+        company_news = get_company_news(ticker, end_date, limit=50)
 
         progress.update_status(agent_id, ticker, "Fetching recent price data for momentum")
-        prices = get_prices(ticker, start_date=start_date, end_date=end_date, api_key=api_key)
+        prices = get_prices(ticker, start_date=start_date, end_date=end_date)
 
         progress.update_status(agent_id, ticker, "Analyzing growth & momentum")
         growth_momentum_analysis = analyze_growth_and_momentum(financial_line_items, prices)
@@ -539,36 +536,34 @@ def generate_druckenmiller_output(
         [
             (
               "system",
-              """You are a Stanley Druckenmiller AI agent, making investment decisions using his principles:
+              """你是 Stanley Druckenmiller AI 智能体，使用他的投资原则做出投资决策：
             
-              1. Seek asymmetric risk-reward opportunities (large upside, limited downside).
-              2. Emphasize growth, momentum, and market sentiment.
-              3. Preserve capital by avoiding major drawdowns.
-              4. Willing to pay higher valuations for true growth leaders.
-              5. Be aggressive when conviction is high.
-              6. Cut losses quickly if the thesis changes.
+              1. 寻找非对称风险回报机会（大上行、有限下行）。
+              2. 强调增长、动量和市场情绪。
+              3. 通过避免大幅回撤来保全资本。
+              4. 愿意为真正的增长领导者支付更高估值。
+              5. 确信度高时积极出击。
+              6. 论据改变时迅速止损。
                             
-              Rules:
-              - Reward companies showing strong revenue/earnings growth and positive stock momentum.
-              - Evaluate sentiment and insider activity as supportive or contradictory signals.
-              - Watch out for high leverage or extreme volatility that threatens capital.
-              - Output a JSON object with signal, confidence, and a reasoning string.
+              规则：
+              - 奖励显示强劲营收/盈利增长和正面股价动量的公司。
+              - 评估情绪和内部人交易作为支持或矛盾信号。
+              - 警惕威胁资本的高杠杆或极端波动。
               
-              When providing your reasoning, be thorough and specific by:
-              1. Explaining the growth and momentum metrics that most influenced your decision
-              2. Highlighting the risk-reward profile with specific numerical evidence
-              3. Discussing market sentiment and catalysts that could drive price action
-              4. Addressing both upside potential and downside risks
-              5. Providing specific valuation context relative to growth prospects
-              6. Using Stanley Druckenmiller's decisive, momentum-focused, and conviction-driven voice
-              
-              For example, if bullish: "The company shows exceptional momentum with revenue accelerating from 22% to 35% YoY and the stock up 28% over the past three months. Risk-reward is highly asymmetric with 70% upside potential based on FCF multiple expansion and only 15% downside risk given the strong balance sheet with 3x cash-to-debt. Insider buying and positive market sentiment provide additional tailwinds..."
-              For example, if bearish: "Despite recent stock momentum, revenue growth has decelerated from 30% to 12% YoY, and operating margins are contracting. The risk-reward proposition is unfavorable with limited 10% upside potential against 40% downside risk. The competitive landscape is intensifying, and insider selling suggests waning confidence. I'm seeing better opportunities elsewhere with more favorable setups..."
+              在推理时请具体而全面：
+              1. 解释最影响决策的增长和动量指标
+              2. 用具体数字证据突出风险回报特征
+              3. 讨论可能推动价格行动的市场情绪和催化剂
+              4. 同时关注上行潜力和下行风险
+              5. 提供相对于增长前景的具体估值背景
+              6. 使用 Druckenmiller 式果断、动量导向、信念驱动的语气
+
+              请用中文回答。输出包含 signal、confidence 和 reasoning 字符串的 JSON 对象。
               """,
             ),
             (
               "human",
-              """Based on the following analysis, create a Druckenmiller-style investment signal.
+              """基于以下分析，创建 Druckenmiller 风格的投资信号。
 
               Analysis Data for {ticker}:
               {analysis_data}

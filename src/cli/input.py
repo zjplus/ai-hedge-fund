@@ -24,7 +24,7 @@ def add_common_args(
         "--tickers",
         type=str,
         required=require_tickers,
-        help="Comma-separated list of stock ticker symbols (e.g., AAPL,MSFT,GOOGL)",
+        help="逗号分隔的股票代码列表 (例如: AAPL,0700.HK,600519.SS)",
     )
     if include_analyst_flags:
         parser.add_argument(
@@ -78,10 +78,10 @@ def select_analysts(flags: dict | None = None) -> list[str]:
         return [a.strip() for a in flags["analysts"].split(",") if a.strip()]
 
     choices = questionary.checkbox(
-        "Select your AI analysts.",
+        "选择你的 AI 分析师。",
         choices=[questionary.Choice(display, value=value) for display, value in ANALYST_ORDER],
-        instruction="\n\nInstructions: \n1. Press Space to select/unselect analysts.\n2. Press 'a' to select/unselect all.\n3. Press Enter when done.",
-        validate=lambda x: len(x) > 0 or "You must select at least one analyst.",
+        instruction="\n\n操作说明: \n1. 按空格键选择/取消选择分析师。\n2. 按 'a' 键全选/取消全选。\n3. 按回车键确认。",
+        validate=lambda x: len(x) > 0 or "你必须至少选择一个分析师。",
         style=questionary.Style(
             [
                 ("checkbox-selected", "fg:green"),
@@ -93,11 +93,11 @@ def select_analysts(flags: dict | None = None) -> list[str]:
     ).ask()
 
     if not choices:
-        print("\n\nInterrupt received. Exiting...")
+        print("\n\n收到中断信号，退出中...")
         sys.exit(0)
 
     print(
-        f"\nSelected analysts: {', '.join(Fore.GREEN + c.title().replace('_', ' ') + Style.RESET_ALL for c in choices)}\n"
+        f"\n已选分析师: {', '.join(Fore.GREEN + c.title().replace('_', ' ') + Style.RESET_ALL for c in choices)}\n"
     )
     return choices
 
@@ -110,16 +110,16 @@ def select_model(use_ollama: bool, model_flag: str | None = None) -> tuple[str, 
         model = find_model_by_name(model_flag)
         if model:
             print(
-                f"\nUsing specified model: {Fore.CYAN}{model.provider.value}{Style.RESET_ALL} - {Fore.GREEN + Style.BRIGHT}{model.model_name}{Style.RESET_ALL}\n"
+                f"\n使用指定模型: {Fore.CYAN}{model.provider.value}{Style.RESET_ALL} - {Fore.GREEN + Style.BRIGHT}{model.model_name}{Style.RESET_ALL}\n"
             )
             return model.model_name, model.provider.value
         else:
-            print(f"{Fore.RED}Model '{model_flag}' not found. Please select a model.{Style.RESET_ALL}")
+            print(f"{Fore.RED}未找到模型 '{model_flag}'，请手动选择模型。{Style.RESET_ALL}")
 
     if use_ollama:
-        print(f"{Fore.CYAN}Using Ollama for local LLM inference.{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}使用 Ollama 进行本地 LLM 推理。{Style.RESET_ALL}")
         model_name = questionary.select(
-            "Select your Ollama model:",
+            "选择你的 Ollama 模型:",
             choices=[questionary.Choice(display, value=value) for display, value, _ in OLLAMA_LLM_ORDER],
             style=questionary.Style(
                 [
@@ -132,26 +132,26 @@ def select_model(use_ollama: bool, model_flag: str | None = None) -> tuple[str, 
         ).ask()
 
         if not model_name:
-            print("\n\nInterrupt received. Exiting...")
+            print("\n\n收到中断信号，退出中...")
             sys.exit(0)
 
         if model_name == "-":
-            model_name = questionary.text("Enter the custom model name:").ask()
+            model_name = questionary.text("输入自定义模型名称:").ask()
             if not model_name:
-                print("\n\nInterrupt received. Exiting...")
+                print("\n\n收到中断信号，退出中...")
                 sys.exit(0)
 
         if not ensure_ollama_and_model(model_name):
-            print(f"{Fore.RED}Cannot proceed without Ollama and the selected model.{Style.RESET_ALL}")
+            print(f"{Fore.RED}无法继续，Ollama 和所选模型不可用。{Style.RESET_ALL}")
             sys.exit(1)
 
         model_provider = ModelProvider.OLLAMA.value
         print(
-            f"\nSelected {Fore.CYAN}Ollama{Style.RESET_ALL} model: {Fore.GREEN + Style.BRIGHT}{model_name}{Style.RESET_ALL}\n"
+            f"\n已选 {Fore.CYAN}Ollama{Style.RESET_ALL} 模型: {Fore.GREEN + Style.BRIGHT}{model_name}{Style.RESET_ALL}\n"
         )
     else:
         model_choice = questionary.select(
-            "Select your LLM model:",
+            "选择你的 LLM 模型:",
             choices=[questionary.Choice(display, value=(name, provider)) for display, name, provider in LLM_ORDER],
             style=questionary.Style(
                 [
@@ -164,25 +164,25 @@ def select_model(use_ollama: bool, model_flag: str | None = None) -> tuple[str, 
         ).ask()
 
         if not model_choice:
-            print("\n\nInterrupt received. Exiting...")
+            print("\n\n收到中断信号，退出中...")
             sys.exit(0)
 
         model_name, model_provider = model_choice
 
         model_info = get_model_info(model_name, model_provider)
         if model_info and model_info.is_custom():
-            model_name = questionary.text("Enter the custom model name:").ask()
+            model_name = questionary.text("输入自定义模型名称:").ask()
             if not model_name:
-                print("\n\nInterrupt received. Exiting...")
+                print("\n\n收到中断信号，退出中...")
                 sys.exit(0)
 
         if model_info:
             print(
-                f"\nSelected {Fore.CYAN}{model_provider}{Style.RESET_ALL} model: {Fore.GREEN + Style.BRIGHT}{model_name}{Style.RESET_ALL}\n"
+                f"\n已选 {Fore.CYAN}{model_provider}{Style.RESET_ALL} 模型: {Fore.GREEN + Style.BRIGHT}{model_name}{Style.RESET_ALL}\n"
             )
         else:
             model_provider = "Unknown"
-            print(f"\nSelected model: {Fore.GREEN + Style.BRIGHT}{model_name}{Style.RESET_ALL}\n")
+            print(f"\n已选模型: {Fore.GREEN + Style.BRIGHT}{model_name}{Style.RESET_ALL}\n")
 
     return model_name, model_provider or ""
 

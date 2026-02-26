@@ -8,7 +8,6 @@ from typing_extensions import Literal
 from src.utils.progress import progress
 from src.utils.llm import call_llm
 import math
-from src.utils.api_key import get_api_key_from_state
 
 
 class BenGrahamSignal(BaseModel):
@@ -28,20 +27,19 @@ def ben_graham_agent(state: AgentState, agent_id: str = "ben_graham_agent"):
     data = state["data"]
     end_date = data["end_date"]
     tickers = data["tickers"]
-    api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
     
     analysis_data = {}
     graham_analysis = {}
 
     for ticker in tickers:
         progress.update_status(agent_id, ticker, "Fetching financial metrics")
-        metrics = get_financial_metrics(ticker, end_date, period="annual", limit=10, api_key=api_key)
+        metrics = get_financial_metrics(ticker, end_date, period="annual", limit=10)
 
         progress.update_status(agent_id, ticker, "Gathering financial line items")
-        financial_line_items = search_line_items(ticker, ["earnings_per_share", "revenue", "net_income", "book_value_per_share", "total_assets", "total_liabilities", "current_assets", "current_liabilities", "dividends_and_other_cash_distributions", "outstanding_shares"], end_date, period="annual", limit=10, api_key=api_key)
+        financial_line_items = search_line_items(ticker, ["earnings_per_share", "revenue", "net_income", "book_value_per_share", "total_assets", "total_liabilities", "current_assets", "current_liabilities", "dividends_and_other_cash_distributions", "outstanding_shares"], end_date, period="annual", limit=10)
 
         progress.update_status(agent_id, ticker, "Getting market cap")
-        market_cap = get_market_cap(ticker, end_date, api_key=api_key)
+        market_cap = get_market_cap(ticker, end_date)
 
         # Perform sub-analyses
         progress.update_status(agent_id, ticker, "Analyzing earnings stability")
@@ -295,30 +293,27 @@ def generate_graham_output(
         [
             (
                 "system",
-                """You are a Benjamin Graham AI agent, making investment decisions using his principles:
-            1. Insist on a margin of safety by buying below intrinsic value (e.g., using Graham Number, net-net).
-            2. Emphasize the company's financial strength (low leverage, ample current assets).
-            3. Prefer stable earnings over multiple years.
-            4. Consider dividend record for extra safety.
-            5. Avoid speculative or high-growth assumptions; focus on proven metrics.
+                """你是 Benjamin Graham AI 智能体，使用他的投资原则做出投资决策：
+            1. 坚持安全边际——以低于内在价值的价格买入（如使用格雷厄姆数字、净流动资产价值）。
+            2. 强调公司财务实力（低杠杆、充足流动资产）。
+            3. 偏好多年稳定的盈利能力。
+            4. 考虑股息记录以获得额外安全性。
+            5. 避免投机性或高增长假设，专注于已验证的指标。
             
-            When providing your reasoning, be thorough and specific by:
-            1. Explaining the key valuation metrics that influenced your decision the most (Graham Number, NCAV, P/E, etc.)
-            2. Highlighting the specific financial strength indicators (current ratio, debt levels, etc.)
-            3. Referencing the stability or instability of earnings over time
-            4. Providing quantitative evidence with precise numbers
-            5. Comparing current metrics to Graham's specific thresholds (e.g., "Current ratio of 2.5 exceeds Graham's minimum of 2.0")
-            6. Using Benjamin Graham's conservative, analytical voice and style in your explanation
-            
-            For example, if bullish: "The stock trades at a 35% discount to net current asset value, providing an ample margin of safety. The current ratio of 2.5 and debt-to-equity of 0.3 indicate strong financial position..."
-            For example, if bearish: "Despite consistent earnings, the current price of $50 exceeds our calculated Graham Number of $35, offering no margin of safety. Additionally, the current ratio of only 1.2 falls below Graham's preferred 2.0 threshold..."
-                        
-            Return a rational recommendation: bullish, bearish, or neutral, with a confidence level (0-100) and thorough reasoning.
+            在推理时请具体而全面：
+            1. 解释对决策影响最大的关键估值指标（格雷厄姆数字、NCAV、P/E 等）
+            2. 突出财务实力指标（流动比率、负债水平等）
+            3. 引用盈利稳定性或不稳定性
+            4. 提供精确数字的定量证据
+            5. 将当前指标与格雷厄姆的具体阈值比较（如"流动比率 2.5 超过格雷厄姆要求的最低 2.0"）
+            6. 使用格雷厄姆保守、分析性的语气
+
+            请用中文回答。返回理性建议：bullish、bearish 或 neutral，附带置信度（0-100）和详细推理。
             """,
             ),
             (
                 "human",
-                """Based on the following analysis, create a Graham-style investment signal:
+                """基于以下分析，创建格雷厄姆风格的投资信号：
 
             Analysis Data for {ticker}:
             {analysis_data}

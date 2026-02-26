@@ -12,7 +12,6 @@ import json
 from typing_extensions import Literal
 from src.utils.progress import progress
 from src.utils.llm import call_llm
-from src.utils.api_key import get_api_key_from_state
 
 
 class PeterLynchSignal(BaseModel):
@@ -42,7 +41,6 @@ def peter_lynch_agent(state: AgentState, agent_id: str = "peter_lynch_agent"):
     data = state["data"]
     end_date = data["end_date"]
     tickers = data["tickers"]
-    api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
     analysis_data = {}
     lynch_analysis = {}
 
@@ -68,17 +66,16 @@ def peter_lynch_agent(state: AgentState, agent_id: str = "peter_lynch_agent"):
             end_date,
             period="annual",
             limit=5,
-            api_key=api_key,
         )
 
         progress.update_status(agent_id, ticker, "Getting market cap")
-        market_cap = get_market_cap(ticker, end_date, api_key=api_key)
+        market_cap = get_market_cap(ticker, end_date)
 
         progress.update_status(agent_id, ticker, "Fetching insider trades")
-        insider_trades = get_insider_trades(ticker, end_date, limit=50, api_key=api_key)
+        insider_trades = get_insider_trades(ticker, end_date, limit=50)
 
         progress.update_status(agent_id, ticker, "Fetching company news")
-        company_news = get_company_news(ticker, end_date, limit=50, api_key=api_key)
+        company_news = get_company_news(ticker, end_date, limit=50)
 
         # Perform sub-analyses:
         progress.update_status(agent_id, ticker, "Analyzing growth")
@@ -451,34 +448,34 @@ def generate_lynch_output(
         [
             (
                 "system",
-                """You are a Peter Lynch AI agent. You make investment decisions based on Peter Lynch's well-known principles:
+                """你是 Peter Lynch AI 智能体。基于 Peter Lynch 的知名投资原则做出投资决策：
                 
-                1. Invest in What You Know: Emphasize understandable businesses, possibly discovered in everyday life.
-                2. Growth at a Reasonable Price (GARP): Rely on the PEG ratio as a prime metric.
-                3. Look for 'Ten-Baggers': Companies capable of growing earnings and share price substantially.
-                4. Steady Growth: Prefer consistent revenue/earnings expansion, less concern about short-term noise.
-                5. Avoid High Debt: Watch for dangerous leverage.
-                6. Management & Story: A good 'story' behind the stock, but not overhyped or too complex.
+                1. 投资你了解的：强调可理解的企业，可能在日常生活中发现。
+                2. 以合理价格成长（GARP）：以 PEG 比率作为核心指标。
+                3. 寻找 "十倍股"：能够大幅增长盈利和股价的公司。
+                4. 稳定增长：偏好持续的营收/盈利扩张，不太在意短期噪音。
+                5. 避免高债务：警惕危险的杠杆。
+                6. 管理层与故事：股票背后有好 "故事"，但不过度炒作或太复杂。
                 
-                When you provide your reasoning, do it in Peter Lynch's voice:
-                - Cite the PEG ratio
-                - Mention 'ten-bagger' potential if applicable
-                - Refer to personal or anecdotal observations (e.g., "If my kids love the product...")
-                - Use practical, folksy language
-                - Provide key positives and negatives
-                - Conclude with a clear stance (bullish, bearish, or neutral)
-                
-                Return your final output strictly in JSON with the fields:
+                用 Peter Lynch 的风格提供推理：
+                - 引用 PEG 比率
+                - 如适用提及 "十倍股" 潜力
+                - 使用务实、通俗的语言
+                - 提供关键优缺点
+                - 用清晰的立场收尾（bullish、bearish 或 neutral）
+
+                请用中文回答。
+                以严格 JSON 格式返回：
                 {{
                   "signal": "bullish" | "bearish" | "neutral",
-                  "confidence": 0 to 100,
+                  "confidence": 0 到 100,
                   "reasoning": "string"
                 }}
                 """,
             ),
             (
                 "human",
-                """Based on the following analysis data for {ticker}, produce your Peter Lynch–style investment signal.
+                """基于以下 {ticker} 的分析数据，生成 Peter Lynch 风格的投资信号。
 
                 Analysis Data:
                 {analysis_data}

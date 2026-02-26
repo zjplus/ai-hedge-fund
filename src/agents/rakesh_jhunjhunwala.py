@@ -7,7 +7,6 @@ from typing_extensions import Literal
 from src.tools.api import get_financial_metrics, get_market_cap, search_line_items
 from src.utils.llm import call_llm
 from src.utils.progress import progress
-from src.utils.api_key import get_api_key_from_state
 
 class RakeshJhunjhunwalaSignal(BaseModel):
     signal: Literal["bullish", "bearish", "neutral"]
@@ -19,7 +18,6 @@ def rakesh_jhunjhunwala_agent(state: AgentState, agent_id: str = "rakesh_jhunjhu
     data = state["data"]
     end_date = data["end_date"]
     tickers = data["tickers"]
-    api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
     # Collect all analysis for LLM reasoning
     analysis_data = {}
     jhunjhunwala_analysis = {}
@@ -28,7 +26,7 @@ def rakesh_jhunjhunwala_agent(state: AgentState, agent_id: str = "rakesh_jhunjhu
 
         # Core Data
         progress.update_status(agent_id, ticker, "Fetching financial metrics")
-        metrics = get_financial_metrics(ticker, end_date, period="ttm", limit=5, api_key=api_key)
+        metrics = get_financial_metrics(ticker, end_date, period="ttm", limit=5)
 
         progress.update_status(agent_id, ticker, "Fetching financial line items")
         financial_line_items = search_line_items(
@@ -49,11 +47,10 @@ def rakesh_jhunjhunwala_agent(state: AgentState, agent_id: str = "rakesh_jhunjhu
                 "issuance_or_purchase_of_equity_shares"
             ],
             end_date,
-            api_key=api_key,
         )
 
         progress.update_status(agent_id, ticker, "Getting market cap")
-        market_cap = get_market_cap(ticker, end_date, api_key=api_key)
+        market_cap = get_market_cap(ticker, end_date)
 
         # ─── Analyses ───────────────────────────────────────────────────────────
         progress.update_status(agent_id, ticker, "Analyzing growth")
@@ -652,32 +649,29 @@ def generate_jhunjhunwala_output(
         [
             (
                 "system",
-                """You are a Rakesh Jhunjhunwala AI agent. Decide on investment signals based on Rakesh Jhunjhunwala's principles:
-                - Circle of Competence: Only invest in businesses you understand
-                - Margin of Safety (> 30%): Buy at a significant discount to intrinsic value
-                - Economic Moat: Look for durable competitive advantages
-                - Quality Management: Seek conservative, shareholder-oriented teams
-                - Financial Strength: Favor low debt, strong returns on equity
-                - Long-term Horizon: Invest in businesses, not just stocks
-                - Growth Focus: Look for companies with consistent earnings and revenue growth
-                - Sell only if fundamentals deteriorate or valuation far exceeds intrinsic value
+                """你是 Rakesh Jhunjhunwala AI 智能体。基于 Rakesh Jhunjhunwala 的投资原则发出投资信号：
+                - 能力圈：只投资你理解的企业
+                - 安全边际 (> 30%)：以显著低于内在价值的折扣买入
+                - 经济护城河：寻找持久的竞争优势
+                - 优质管理层：寻找保守的、以股东为导向的团队
+                - 财务实力：偏好低负债、高净资产收益率
+                - 长期视角：投资企业，不只是股票
+                - 增长导向：寻找盈利和营收持续增长的公司
+                - 仅在基本面恶化或估值远超内在价值时卖出
 
-                When providing your reasoning, be thorough and specific by:
-                1. Explaining the key factors that influenced your decision the most (both positive and negative)
-                2. Highlighting how the company aligns with or violates specific Jhunjhunwala principles
-                3. Providing quantitative evidence where relevant (e.g., specific margins, ROE values, debt levels)
-                4. Concluding with a Jhunjhunwala-style assessment of the investment opportunity
-                5. Using Rakesh Jhunjhunwala's voice and conversational style in your explanation
+                在推理时请具体而全面：
+                1. 解释对决策影响最大的关键因素（正面和负面）
+                2. 突出公司如何符合或违反 Jhunjhunwala 的具体原则
+                3. 在适用处提供定量证据（如具体利润率、ROE 值、负债水平）
+                4. 以 Jhunjhunwala 风格对投资机会做出总结评估
+                5. 使用 Rakesh Jhunjhunwala 的语气和对话风格
 
-                For example, if bullish: "I'm particularly impressed with the consistent growth and strong balance sheet, reminiscent of quality companies that create long-term wealth..."
-                For example, if bearish: "The deteriorating margins and high debt levels concern me - this doesn't fit the profile of companies that build lasting value..."
-
-                Follow these guidelines strictly.
+                请用中文回答。严格遵循以上准则。
                 """,
             ),
             (
                 "human",
-                """Based on the following data, create the investment signal as Rakesh Jhunjhunwala would:
+                """基于以下数据，以 Rakesh Jhunjhunwala 的风格创建投资信号：
 
                 Analysis Data for {ticker}:
                 {analysis_data}

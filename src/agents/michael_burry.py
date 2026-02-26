@@ -18,7 +18,6 @@ from src.tools.api import (
 )
 from src.utils.llm import call_llm
 from src.utils.progress import progress
-from src.utils.api_key import get_api_key_from_state
 
 
 class MichaelBurrySignal(BaseModel):
@@ -31,7 +30,6 @@ class MichaelBurrySignal(BaseModel):
 
 def michael_burry_agent(state: AgentState, agent_id: str = "michael_burry_agent"):
     """Analyse stocks using Michael Burry's deep‑value, contrarian framework."""
-    api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
     data = state["data"]
     end_date: str = data["end_date"]  # YYYY‑MM‑DD
     tickers: list[str] = data["tickers"]
@@ -47,7 +45,7 @@ def michael_burry_agent(state: AgentState, agent_id: str = "michael_burry_agent"
         # Fetch raw data
         # ------------------------------------------------------------------
         progress.update_status(agent_id, ticker, "Fetching financial metrics")
-        metrics = get_financial_metrics(ticker, end_date, period="ttm", limit=5, api_key=api_key)
+        metrics = get_financial_metrics(ticker, end_date, period="ttm", limit=5)
 
         progress.update_status(agent_id, ticker, "Fetching line items")
         line_items = search_line_items(
@@ -63,7 +61,6 @@ def michael_burry_agent(state: AgentState, agent_id: str = "michael_burry_agent"
                 "issuance_or_purchase_of_equity_shares",
             ],
             end_date,
-            api_key=api_key,
         )
 
         progress.update_status(agent_id, ticker, "Fetching insider trades")
@@ -73,7 +70,7 @@ def michael_burry_agent(state: AgentState, agent_id: str = "michael_burry_agent"
         news = get_company_news(ticker, end_date=end_date, start_date=start_date, limit=250)
 
         progress.update_status(agent_id, ticker, "Fetching market cap")
-        market_cap = get_market_cap(ticker, end_date, api_key=api_key)
+        market_cap = get_market_cap(ticker, end_date)
 
         # ------------------------------------------------------------------
         # Run sub‑analyses
@@ -325,32 +322,30 @@ def _generate_burry_output(
         [
             (
                 "system",
-                """You are an AI agent emulating Dr. Michael J. Burry. Your mandate:
-                - Hunt for deep value in US equities using hard numbers (free cash flow, EV/EBIT, balance sheet)
-                - Be contrarian: hatred in the press can be your friend if fundamentals are solid
-                - Focus on downside first – avoid leveraged balance sheets
-                - Look for hard catalysts such as insider buying, buybacks, or asset sales
-                - Communicate in Burry's terse, data‑driven style
+                """你是模拟 Michael J. Burry 博士的 AI 智能体。你的任务：
+                - 用硬数据（自由现金流、EV/EBIT、资产负债表）在股票中寻找深度价值
+                - 做逆向投资者：当基本面扎实时，媒体的负面报道是你的朋友
+                - 先关注下行风险——避开高杠杆资产负债表
+                - 寻找硬催化剂：内部人买入、回购、资产处置
+                - 用 Burry 式简洁、数据驱动的风格表达
 
-                When providing your reasoning, be thorough and specific by:
-                1. Start with the key metric(s) that drove your decision
-                2. Cite concrete numbers (e.g. "FCF yield 14.7%", "EV/EBIT 5.3")
-                3. Highlight risk factors and why they are acceptable (or not)
-                4. Mention relevant insider activity or contrarian opportunities
-                5. Use Burry's direct, number-focused communication style with minimal words
-                
-                For example, if bullish: "FCF yield 12.8%. EV/EBIT 6.2. Debt-to-equity 0.4. Net insider buying 25k shares. Market missing value due to overreaction to recent litigation. Strong buy."
-                For example, if bearish: "FCF yield only 2.1%. Debt-to-equity concerning at 2.3. Management diluting shareholders. Pass."
-                """,
+                提供推理时请具体而全面：
+                1. 从驱动决策的关键指标入手
+                2. 引用具体数字（如 "FCF 收益率 14.7%"、"EV/EBIT 5.3"）
+                3. 强调风险因素及为何可接受（或不可接受）
+                4. 提及相关的内部人交易或逆向投资机会
+                5. 用 Burry 风格的直接、以数字为核心的简洁表达
+
+                请用中文回答。""",
             ),
             (
                 "human",
-                """Based on the following data, create the investment signal as Michael Burry would:
+                """基于以下数据，以 Michael Burry 的风格创建投资信号：
 
                 Analysis Data for {ticker}:
                 {analysis_data}
 
-                Return the trading signal in the following JSON format exactly:
+                请严格按以下 JSON 格式返回交易信号：
                 {{
                   "signal": "bullish" | "bearish" | "neutral",
                   "confidence": float between 0 and 100,

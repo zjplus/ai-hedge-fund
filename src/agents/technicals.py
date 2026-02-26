@@ -3,12 +3,11 @@ import math
 from langchain_core.messages import HumanMessage
 
 from src.graph.state import AgentState, show_agent_reasoning
-from src.utils.api_key import get_api_key_from_state
 import json
 import pandas as pd
 import numpy as np
 
-from src.tools.api import get_prices, prices_to_df
+from src.tools.api import get_prices, prices_to_df, get_market_params
 from src.utils.progress import progress
 
 
@@ -45,7 +44,6 @@ def technical_analyst_agent(state: AgentState, agent_id: str = "technical_analys
     start_date = data["start_date"]
     end_date = data["end_date"]
     tickers = data["tickers"]
-    api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
     # Initialize analysis for each ticker
     technical_analysis = {}
 
@@ -57,7 +55,6 @@ def technical_analyst_agent(state: AgentState, agent_id: str = "technical_analys
             ticker=ticker,
             start_date=start_date,
             end_date=end_date,
-            api_key=api_key,
         )
 
         if not prices:
@@ -77,7 +74,9 @@ def technical_analyst_agent(state: AgentState, agent_id: str = "technical_analys
         momentum_signals = calculate_momentum_signals(prices_df)
 
         progress.update_status(agent_id, ticker, "Analyzing volatility")
-        volatility_signals = calculate_volatility_signals(prices_df)
+        market_params = get_market_params(ticker)
+        trading_days = market_params["trading_days_per_year"]
+        volatility_signals = calculate_volatility_signals(prices_df, trading_days=trading_days)
 
         progress.update_status(agent_id, ticker, "Statistical analysis")
         stat_arb_signals = calculate_stat_arb_signals(prices_df)
@@ -283,7 +282,7 @@ def calculate_momentum_signals(prices_df):
     }
 
 
-def calculate_volatility_signals(prices_df):
+def calculate_volatility_signals(prices_df, trading_days: int = 252):
     """
     Volatility-based trading strategy
     """
@@ -291,7 +290,7 @@ def calculate_volatility_signals(prices_df):
     returns = prices_df["close"].pct_change()
 
     # Historical volatility
-    hist_vol = returns.rolling(21).std() * math.sqrt(252)
+    hist_vol = returns.rolling(21).std() * math.sqrt(trading_days)
 
     # Volatility regime detection
     vol_ma = hist_vol.rolling(63).mean()

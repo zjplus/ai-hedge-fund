@@ -7,7 +7,6 @@ from typing_extensions import Literal
 from src.tools.api import get_financial_metrics, get_market_cap, search_line_items
 from src.utils.llm import call_llm
 from src.utils.progress import progress
-from src.utils.api_key import get_api_key_from_state
 
 
 class WarrenBuffettSignal(BaseModel):
@@ -21,7 +20,6 @@ def warren_buffett_agent(state: AgentState, agent_id: str = "warren_buffett_agen
     data = state["data"]
     end_date = data["end_date"]
     tickers = data["tickers"]
-    api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
     # Collect all analysis for LLM reasoning
     analysis_data = {}
     buffett_analysis = {}
@@ -29,7 +27,7 @@ def warren_buffett_agent(state: AgentState, agent_id: str = "warren_buffett_agen
     for ticker in tickers:
         progress.update_status(agent_id, ticker, "Fetching financial metrics")
         # Fetch required data - request more periods for better trend analysis
-        metrics = get_financial_metrics(ticker, end_date, period="ttm", limit=10, api_key=api_key)
+        metrics = get_financial_metrics(ticker, end_date, period="ttm", limit=10)
 
         progress.update_status(agent_id, ticker, "Gathering financial line items")
         financial_line_items = search_line_items(
@@ -51,12 +49,11 @@ def warren_buffett_agent(state: AgentState, agent_id: str = "warren_buffett_agen
             end_date,
             period="ttm",
             limit=10,
-            api_key=api_key,
         )
 
         progress.update_status(agent_id, ticker, "Getting market cap")
         # Get current market cap
-        market_cap = get_market_cap(ticker, end_date, api_key=api_key)
+        market_cap = get_market_cap(ticker, end_date)
 
         progress.update_status(agent_id, ticker, "Analyzing fundamentals")
         # Analyze fundamentals
@@ -770,29 +767,29 @@ def generate_buffett_output(
         [
             (
                 "system",
-                "You are Warren Buffett. Decide bullish, bearish, or neutral using only the provided facts.\n"
+                "你是 Warren Buffett。仅使用提供的事实判断 bullish、bearish 或 neutral。\n"
                 "\n"
-                "Checklist for decision:\n"
-                "- Circle of competence\n"
-                "- Competitive moat\n"
-                "- Management quality\n"
-                "- Financial strength\n"
-                "- Valuation vs intrinsic value\n"
-                "- Long-term prospects\n"
+                "决策清单：\n"
+                "- 能力圈\n"
+                "- 竞争护城河\n"
+                "- 管理层质量\n"
+                "- 财务实力\n"
+                "- 估值 vs 内在价值\n"
+                "- 长期前景\n"
                 "\n"
-                "Signal rules:\n"
-                "- Bullish: strong business AND margin_of_safety > 0.\n"
-                "- Bearish: poor business OR clearly overvalued.\n"
-                "- Neutral: good business but margin_of_safety <= 0, or mixed evidence.\n"
+                "信号规则：\n"
+                "- Bullish：强企业且安全边际 > 0。\n"
+                "- Bearish：差企业或明显高估。\n"
+                "- Neutral：好企业但安全边际 <= 0，或信号混合。\n"
                 "\n"
-                "Confidence scale:\n"
-                "- 90-100%: Exceptional business within my circle, trading at attractive price\n"
-                "- 70-89%: Good business with decent moat, fair valuation\n"
-                "- 50-69%: Mixed signals, would need more information or better price\n"
-                "- 30-49%: Outside my expertise or concerning fundamentals\n"
-                "- 10-29%: Poor business or significantly overvalued\n"
+                "置信度范围：\n"
+                "- 90-100%：能力圈内的卓越企业，价格有吸引力\n"
+                "- 70-89%：有不错护城河的好企业，估值合理\n"
+                "- 50-69%：信号混合，需要更多信息或更好的价格\n"
+                "- 30-49%：超出专长或基本面令人担忧\n"
+                "- 10-29%：差企业或严重高估\n"
                 "\n"
-                "Keep reasoning under 120 characters. Do not invent data. Return JSON only."
+                "推理保持在 120 字以内。请用中文回答。不要编造数据。仅返回 JSON。"
             ),
             (
                 "human",

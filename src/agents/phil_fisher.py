@@ -13,7 +13,6 @@ from typing_extensions import Literal
 from src.utils.progress import progress
 from src.utils.llm import call_llm
 import statistics
-from src.utils.api_key import get_api_key_from_state
 
 class PhilFisherSignal(BaseModel):
     signal: Literal["bullish", "bearish", "neutral"]
@@ -36,7 +35,6 @@ def phil_fisher_agent(state: AgentState, agent_id: str = "phil_fisher_agent"):
     data = state["data"]
     end_date = data["end_date"]
     tickers = data["tickers"]
-    api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
     analysis_data = {}
     fisher_analysis = {}
 
@@ -67,17 +65,16 @@ def phil_fisher_agent(state: AgentState, agent_id: str = "phil_fisher_agent"):
             end_date,
             period="annual",
             limit=5,
-            api_key=api_key,
         )
 
         progress.update_status(agent_id, ticker, "Getting market cap")
-        market_cap = get_market_cap(ticker, end_date, api_key=api_key)
+        market_cap = get_market_cap(ticker, end_date)
 
         progress.update_status(agent_id, ticker, "Fetching insider trades")
-        insider_trades = get_insider_trades(ticker, end_date, limit=50, api_key=api_key)
+        insider_trades = get_insider_trades(ticker, end_date, limit=50)
 
         progress.update_status(agent_id, ticker, "Fetching company news")
-        company_news = get_company_news(ticker, end_date, limit=50, api_key=api_key)
+        company_news = get_company_news(ticker, end_date, limit=50)
 
         progress.update_status(agent_id, ticker, "Analyzing growth & quality")
         growth_quality = analyze_fisher_growth_quality(financial_line_items)
@@ -541,35 +538,32 @@ def generate_fisher_output(
         [
             (
               "system",
-              """You are a Phil Fisher AI agent, making investment decisions using his principles:
+              """你是 Phil Fisher AI 智能体，使用他的投资原则做出投资决策：
   
-              1. Emphasize long-term growth potential and quality of management.
-              2. Focus on companies investing in R&D for future products/services.
-              3. Look for strong profitability and consistent margins.
-              4. Willing to pay more for exceptional companies but still mindful of valuation.
-              5. Rely on thorough research (scuttlebutt) and thorough fundamental checks.
+              1. 强调长期增长潜力和管理层质量。
+              2. 关注投资研发以开发未来产品/服务的公司。
+              3. 寻找强劲的盈利能力和稳定的利润率。
+              4. 愿意为卓越公司支付较高价格但仍注意估值。
+              5. 依赖深入调研（小道消息法）和全面的基本面检查。
               
-              When providing your reasoning, be thorough and specific by:
-              1. Discussing the company's growth prospects in detail with specific metrics and trends
-              2. Evaluating management quality and their capital allocation decisions
-              3. Highlighting R&D investments and product pipeline that could drive future growth
-              4. Assessing consistency of margins and profitability metrics with precise numbers
-              5. Explaining competitive advantages that could sustain growth over 3-5+ years
-              6. Using Phil Fisher's methodical, growth-focused, and long-term oriented voice
-              
-              For example, if bullish: "This company exhibits the sustained growth characteristics we seek, with revenue increasing at 18% annually over five years. Management has demonstrated exceptional foresight by allocating 15% of revenue to R&D, which has produced three promising new product lines. The consistent operating margins of 22-24% indicate pricing power and operational efficiency that should continue to..."
-              
-              For example, if bearish: "Despite operating in a growing industry, management has failed to translate R&D investments (only 5% of revenue) into meaningful new products. Margins have fluctuated between 10-15%, showing inconsistent operational execution. The company faces increasing competition from three larger competitors with superior distribution networks. Given these concerns about long-term growth sustainability..."
-              
-              You must output a JSON object with:
-                - "signal": "bullish" or "bearish" or "neutral"
-                - "confidence": a float between 0 and 100
-                - "reasoning": a detailed explanation
+              在推理时请具体而全面：
+              1. 详细讨论公司的增长前景，包含具体指标和趋势
+              2. 评估管理层质量和资本配置决策
+              3. 突出研发投入和产品管线对未来增长的推动
+              4. 用精确数字评估利润率和盈利指标的一致性
+              5. 解释能维持 3-5 年以上增长的竞争优势
+              6. 使用 Phil Fisher 式系统化、以增长为导向、长期视角的语气
+
+              请用中文回答。
+              输出 JSON 对象包含：
+                - "signal": "bullish" 或 "bearish" 或 "neutral"
+                - "confidence": 0 到 100 的浮点数
+                - "reasoning": 详细解释
               """,
             ),
             (
               "human",
-              """Based on the following analysis, create a Phil Fisher-style investment signal.
+              """基于以下分析，创建 Phil Fisher 风格的投资信号。
 
               Analysis Data for {ticker}:
               {analysis_data}
