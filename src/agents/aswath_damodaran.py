@@ -12,6 +12,7 @@ from src.tools.api import (
     get_financial_metrics,
     get_market_cap,
     search_line_items,
+    get_company_name,
 )
 from src.utils.llm import call_llm
 from src.utils.progress import progress
@@ -385,7 +386,7 @@ def generate_damodaran_output(
             ),
             (
                 "human",
-                """Ticker: {ticker}
+                """Ticker: {ticker}（{company_name}）
 
                 Analysis data:
                 {analysis_data}
@@ -400,7 +401,7 @@ def generate_damodaran_output(
         ]
     )
 
-    prompt = template.invoke({"analysis_data": json.dumps(analysis_data, indent=2), "ticker": ticker})
+    prompt = template.invoke({"analysis_data": json.dumps(analysis_data, indent=2), "ticker": ticker, "company_name": get_company_name(ticker)})
 
     def default_signal():
         return AswathDamodaranSignal(

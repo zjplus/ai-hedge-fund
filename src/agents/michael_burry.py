@@ -15,6 +15,7 @@ from src.tools.api import (
     get_insider_trades,
     get_market_cap,
     search_line_items,
+    get_company_name,
 )
 from src.utils.llm import call_llm
 from src.utils.progress import progress
@@ -342,7 +343,7 @@ def _generate_burry_output(
                 "human",
                 """基于以下数据，以 Michael Burry 的风格创建投资信号：
 
-                Analysis Data for {ticker}:
+                Analysis Data for {ticker}（{company_name}）:
                 {analysis_data}
 
                 请严格按以下 JSON 格式返回交易信号：
@@ -356,7 +357,7 @@ def _generate_burry_output(
         ]
     )
 
-    prompt = template.invoke({"analysis_data": json.dumps(analysis_data, indent=2), "ticker": ticker})
+    prompt = template.invoke({"analysis_data": json.dumps(analysis_data, indent=2), "ticker": ticker, "company_name": get_company_name(ticker)})
 
     # Default fallback signal in case parsing fails
     def create_default_michael_burry_signal():

@@ -1,5 +1,5 @@
 from src.graph.state import AgentState, show_agent_reasoning
-from src.tools.api import get_financial_metrics, get_market_cap, search_line_items
+from src.tools.api import get_financial_metrics, get_market_cap, search_line_items, get_company_name
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
@@ -431,7 +431,7 @@ def generate_ackman_output(
             "human",
             """基于以下分析，创建 Ackman 风格的投资信号。
 
-            Analysis Data for {ticker}:
+            Analysis Data for {ticker}（{company_name}）:
             {analysis_data}
 
             Return your output in strictly valid JSON:
@@ -446,7 +446,8 @@ def generate_ackman_output(
 
     prompt = template.invoke({
         "analysis_data": json.dumps(analysis_data, indent=2),
-        "ticker": ticker
+        "ticker": ticker,
+        "company_name": get_company_name(ticker),
     })
 
     def create_default_bill_ackman_signal():

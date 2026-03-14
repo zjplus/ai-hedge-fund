@@ -6,6 +6,7 @@ from src.tools.api import (
     get_insider_trades,
     get_company_news,
     get_prices,
+    get_company_name,
 )
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage
@@ -565,7 +566,7 @@ def generate_druckenmiller_output(
               "human",
               """基于以下分析，创建 Druckenmiller 风格的投资信号。
 
-              Analysis Data for {ticker}:
+              Analysis Data for {ticker}（{company_name}）:
               {analysis_data}
 
               Return the trading signal in this JSON format:
@@ -579,7 +580,7 @@ def generate_druckenmiller_output(
         ]
     )
 
-    prompt = template.invoke({"analysis_data": json.dumps(analysis_data, indent=2), "ticker": ticker})
+    prompt = template.invoke({"analysis_data": json.dumps(analysis_data, indent=2), "ticker": ticker, "company_name": get_company_name(ticker)})
 
     def create_default_signal():
         return StanleyDruckenmillerSignal(

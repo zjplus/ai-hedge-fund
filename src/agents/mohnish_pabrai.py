@@ -1,5 +1,5 @@
 from src.graph.state import AgentState, show_agent_reasoning
-from src.tools.api import get_financial_metrics, get_market_cap, search_line_items
+from src.tools.api import get_financial_metrics, get_market_cap, search_line_items, get_company_name
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
@@ -325,7 +325,7 @@ def generate_pabrai_output(
         ),
         (
           "human",
-          """Analyze {ticker} using the provided data.
+          """Analyze {ticker}（{company_name}）using the provided data.
 
           DATA:
           {analysis_data}
@@ -343,6 +343,7 @@ def generate_pabrai_output(
     prompt = template.invoke({
         "analysis_data": json.dumps(analysis_data, indent=2),
         "ticker": ticker,
+        "company_name": get_company_name(ticker),
     })
 
     def create_default_pabrai_signal():

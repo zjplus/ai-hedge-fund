@@ -8,7 +8,7 @@ import numpy as np
 import json
 
 from src.graph.state import AgentState, show_agent_reasoning
-from src.tools.api import get_company_news
+from src.tools.api import get_company_news, get_company_name
 from src.utils.llm import call_llm
 from src.utils.progress import progress
 from typing_extensions import Literal
@@ -72,7 +72,7 @@ def news_sentiment_agent(state: AgentState, agent_id: str = "news_sentiment_agen
                 progress.update_status(agent_id, ticker, f"Analyzing sentiment for article {idx + 1} of {len(articles_to_analyze)}")
                 prompt = (
                     f"请分析以下新闻标题的情感倾向。"
-                    f"背景信息：这支股票是 {ticker}。"
+                    f"背景信息：这支股票是 {ticker}（{get_company_name(ticker)}）。"
                     f"仅针对股票 {ticker} 判断情感是 'positive'（正面）、'negative'（负面）还是 'neutral'（中性）。"
                     f"同时提供你预测的置信度分数（0 到 100）。"
                     f"请以 JSON 格式回复。\n\n"

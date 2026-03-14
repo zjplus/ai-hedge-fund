@@ -4,7 +4,7 @@ from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 import json
 from typing_extensions import Literal
-from src.tools.api import get_financial_metrics, get_market_cap, search_line_items
+from src.tools.api import get_financial_metrics, get_market_cap, search_line_items, get_company_name
 from src.utils.llm import call_llm
 from src.utils.progress import progress
 
@@ -793,7 +793,7 @@ def generate_buffett_output(
             ),
             (
                 "human",
-                "Ticker: {ticker}\n"
+                "Ticker: {ticker}（{company_name}）\n"
                 "Facts:\n{facts}\n\n"
                 "Return exactly:\n"
                 "{{\n"
@@ -808,6 +808,7 @@ def generate_buffett_output(
     prompt = template.invoke({
         "facts": json.dumps(facts, separators=(",", ":"), ensure_ascii=False),
         "ticker": ticker,
+        "company_name": get_company_name(ticker),
     })
 
     # Default fallback uses int confidence to match schema and avoid parse retries

@@ -15,6 +15,8 @@ dependencies = [
     "pandas>=2.1.0",
     "numpy>=1.24.0",
     "yfinance>=0.2.31",
+    "akshare>=1.12.0",
+    "tushare>=1.4.0",
     "python-dotenv==1.0.0",
     "matplotlib>=3.9.2",
     "tabulate>=0.9.0",

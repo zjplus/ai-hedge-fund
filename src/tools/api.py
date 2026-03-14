@@ -24,8 +24,22 @@ from src.data.models import (
 
 try:
     import yfinance as yf
+    from yfinance.exceptions import YFRateLimitError
 except ImportError:
     raise ImportError("请安装 yfinance: uv add yfinance")
+
+# ---------------------------------------------------------------------------
+# 备份数据源（tushare > akshare），import 失败不影响主流程
+# ---------------------------------------------------------------------------
+try:
+    from src.tools import tushare_api as _ts_api
+except Exception:
+    _ts_api = None
+
+try:
+    from src.tools import akshare_api as _ak_api
+except Exception:
+    _ak_api = None
 
 # Global cache instance
 _cache = get_cache()
@@ -35,9 +49,9 @@ _cache = get_cache()
 # ---------------------------------------------------------------------------
 _REQUEST_LOCK = threading.Lock()
 _LAST_REQUEST_TIME = 0.0
-_MIN_REQUEST_INTERVAL = 0.35  # 两次请求之间最少间隔（秒）
-_MAX_RETRIES = 3
-_RETRY_BASE_DELAY = 2.0  # 重试基础等待秒数（指数退避）
+_MIN_REQUEST_INTERVAL = 0.5  # 两次请求之间最少间隔（秒）
+_MAX_RETRIES = 4
+_RETRY_BASE_DELAY = 3.0  # 重试基础等待秒数（指数退避）
 
 # Ticker 对象 & info 缓存（进程内，减少重复 HTTP 请求）
 _ticker_cache: dict[str, yf.Ticker] = {}
@@ -64,24 +78,41 @@ def _retry_on_rate_limit(func, *args, **kwargs):
         try:
             _throttle()
             return func(*args, **kwargs)
+        except YFRateLimitError as e:
+            # yfinance 原生限流异常
+            if attempt < _MAX_RETRIES - 1:
+                delay = _RETRY_BASE_DELAY * (2 ** attempt) + random.uniform(0.5, 2)
+                print(f"  ⏳ yfinance 限流，{delay:.1f}s 后重试 (第 {attempt + 2}/{_MAX_RETRIES} 次)...")
+                time.sleep(delay)
+                last_exc = e
+                # 清除 yfinance 内部 cookie/crumb 缓存
+                _clear_yf_cache()
+            else:
+                raise
         except Exception as e:
             err_msg = str(e).lower()
             is_rate_limit = any(kw in err_msg for kw in [
                 "rate limit", "too many requests", "429", "unauthorized", "invalid crumb"
             ])
             if is_rate_limit and attempt < _MAX_RETRIES - 1:
-                delay = _RETRY_BASE_DELAY * (2 ** attempt) + random.uniform(0, 1)
+                delay = _RETRY_BASE_DELAY * (2 ** attempt) + random.uniform(0.5, 2)
                 print(f"  ⏳ yfinance 限流，{delay:.1f}s 后重试 (第 {attempt + 2}/{_MAX_RETRIES} 次)...")
                 time.sleep(delay)
                 last_exc = e
-                # 限流后清理 crumb 缓存
-                try:
-                    yf.utils.get_json = lambda *a, **k: None  # noqa – 不可靠，仅占位
-                except:
-                    pass
+                _clear_yf_cache()
             else:
                 raise
     raise last_exc
+
+
+def _clear_yf_cache():
+    """清除 yfinance 的内部 session/cookie/crumb 缓存，强制下次重新获取。"""
+    global _ticker_cache
+    try:
+        # 清除 Ticker 对象缓存，强制重建（新的 session）
+        _ticker_cache.clear()
+    except:
+        pass
 
 
 def _detect_market(ticker: str) -> str:
@@ -97,6 +128,54 @@ def _detect_market(ticker: str) -> str:
         return "CN"
     else:
         return "US"
+
+
+# ---------------------------------------------------------------------------
+# 公司名称查询（带缓存）
+# ---------------------------------------------------------------------------
+_company_name_cache: dict[str, str] = {}
+
+
+def get_company_name(ticker: str) -> str:
+    """获取公司名称。优先用 yfinance，失败时尝试备份数据源，最终返回 ticker 本身。
+    结果会缓存，同一进程内不会重复请求。"""
+    if ticker in _company_name_cache:
+        return _company_name_cache[ticker]
+
+    name = ticker  # fallback
+    try:
+        info = _get_info(ticker)
+        # yfinance 对不同市场返回的字段名不同
+        name = (
+            info.get("longName")
+            or info.get("shortName")
+            or info.get("name")
+            or ""
+        )
+        if not name:
+            raise ValueError("yfinance 未返回公司名称")
+    except Exception:
+        # Fallback 1: tushare
+        if _ts_api is not None:
+            try:
+                fallback_name = _ts_api.get_company_name(ticker)
+                if fallback_name:
+                    name = fallback_name
+            except Exception:
+                pass
+        # Fallback 2: akshare
+        if (not name or name == ticker) and _ak_api is not None:
+            try:
+                fallback_name = _ak_api.get_company_name(ticker)
+                if fallback_name:
+                    name = fallback_name
+            except Exception:
+                pass
+        if not name or name == "":
+            name = ticker
+
+    _company_name_cache[ticker] = name
+    return name
 
 
 def get_market_params(ticker: str) -> dict:
@@ -170,7 +249,7 @@ def get_prices(ticker: str, start_date: str, end_date: str, api_key: str = None)
         )
 
         if df.empty:
-            return []
+            raise ValueError("yfinance 返回空数据")
 
         prices = []
         for idx, row in df.iterrows():
@@ -186,7 +265,27 @@ def get_prices(ticker: str, start_date: str, end_date: str, api_key: str = None)
         _cache.set_prices(cache_key, [p.model_dump() for p in prices])
         return prices
     except Exception as e:
-        print(f"获取价格数据失败 ({ticker}): {e}")
+        print(f"  [yfinance] 获取价格数据失败 ({ticker}): {e}，尝试备份数据源...")
+        # Fallback 1: tushare
+        if _ts_api is not None:
+            try:
+                prices = _ts_api.get_prices(ticker, start_date, end_date)
+                if prices:
+                    print(f"  ✅ [tushare] 获取价格数据成功 ({ticker})")
+                    _cache.set_prices(cache_key, [p.model_dump() for p in prices])
+                    return prices
+            except Exception as ex:
+                print(f"  [tushare] 获取价格数据失败 ({ticker}): {ex}")
+        # Fallback 2: akshare
+        if _ak_api is not None:
+            try:
+                prices = _ak_api.get_prices(ticker, start_date, end_date)
+                if prices:
+                    print(f"  ✅ [akshare] 获取价格数据成功 ({ticker})")
+                    _cache.set_prices(cache_key, [p.model_dump() for p in prices])
+                    return prices
+            except Exception as ex:
+                print(f"  [akshare] 获取价格数据失败 ({ticker}): {ex}")
         return []
 
 
@@ -325,7 +424,27 @@ def get_financial_metrics(
         _cache.set_financial_metrics(cache_key, [m.model_dump() for m in result])
         return result
     except Exception as e:
-        print(f"获取财务指标失败 ({ticker}): {e}")
+        print(f"  [yfinance] 获取财务指标失败 ({ticker}): {e}，尝试备份数据源...")
+        # Fallback 1: tushare
+        if _ts_api is not None:
+            try:
+                metrics = _ts_api.get_financial_metrics(ticker, end_date, period=period, limit=limit)
+                if metrics:
+                    print(f"  ✅ [tushare] 获取财务指标成功 ({ticker})")
+                    _cache.set_financial_metrics(cache_key, [m.model_dump() for m in metrics])
+                    return metrics
+            except Exception as ex:
+                print(f"  [tushare] 获取财务指标失败 ({ticker}): {ex}")
+        # Fallback 2: akshare
+        if _ak_api is not None:
+            try:
+                metrics = _ak_api.get_financial_metrics(ticker, end_date, period=period, limit=limit)
+                if metrics:
+                    print(f"  ✅ [akshare] 获取财务指标成功 ({ticker})")
+                    _cache.set_financial_metrics(cache_key, [m.model_dump() for m in metrics])
+                    return metrics
+            except Exception as ex:
+                print(f"  [akshare] 获取财务指标失败 ({ticker}): {ex}")
         return []
 
 
@@ -450,7 +569,25 @@ def search_line_items(
 
         return results[:limit]
     except Exception as e:
-        print(f"获取财务报表明细失败 ({ticker}): {e}")
+        print(f"  [yfinance] 获取财务报表明细失败 ({ticker}): {e}，尝试备份数据源...")
+        # Fallback 1: tushare
+        if _ts_api is not None:
+            try:
+                items = _ts_api.search_line_items(ticker, line_items, end_date, period=period, limit=limit)
+                if items:
+                    print(f"  ✅ [tushare] 获取财务报表明细成功 ({ticker})")
+                    return items
+            except Exception as ex:
+                print(f"  [tushare] 获取财务报表明细失败 ({ticker}): {ex}")
+        # Fallback 2: akshare
+        if _ak_api is not None:
+            try:
+                items = _ak_api.search_line_items(ticker, line_items, end_date, period=period, limit=limit)
+                if items:
+                    print(f"  ✅ [akshare] 获取财务报表明细成功 ({ticker})")
+                    return items
+            except Exception as ex:
+                print(f"  [akshare] 获取财务报表明细失败 ({ticker}): {ex}")
         return []
 
 
@@ -520,7 +657,27 @@ def get_insider_trades(
             _cache.set_insider_trades(cache_key, [t.model_dump() for t in trades])
         return trades
     except Exception as e:
-        print(f"获取内部人交易数据失败 ({ticker}): {e}")
+        print(f"  [yfinance] 获取内部人交易数据失败 ({ticker}): {e}，尝试备份数据源...")
+        # Fallback 1: tushare
+        if _ts_api is not None:
+            try:
+                trades = _ts_api.get_insider_trades(ticker, end_date, start_date=start_date, limit=limit)
+                if trades:
+                    print(f"  ✅ [tushare] 获取内部人交易数据成功 ({ticker})")
+                    _cache.set_insider_trades(cache_key, [t.model_dump() for t in trades])
+                    return trades
+            except Exception as ex:
+                print(f"  [tushare] 获取内部人交易数据失败 ({ticker}): {ex}")
+        # Fallback 2: akshare
+        if _ak_api is not None:
+            try:
+                trades = _ak_api.get_insider_trades(ticker, end_date, start_date=start_date, limit=limit)
+                if trades:
+                    print(f"  ✅ [akshare] 获取内部人交易数据成功 ({ticker})")
+                    _cache.set_insider_trades(cache_key, [t.model_dump() for t in trades])
+                    return trades
+            except Exception as ex:
+                print(f"  [akshare] 获取内部人交易数据失败 ({ticker}): {ex}")
         return []
 
 
@@ -593,7 +750,27 @@ def get_company_news(
             _cache.set_company_news(cache_key, [a.model_dump() for a in articles])
         return articles
     except Exception as e:
-        print(f"获取公司新闻失败 ({ticker}): {e}")
+        print(f"  [yfinance] 获取公司新闻失败 ({ticker}): {e}，尝试备份数据源...")
+        # Fallback 1: tushare
+        if _ts_api is not None:
+            try:
+                articles = _ts_api.get_company_news(ticker, end_date, start_date=start_date, limit=limit)
+                if articles:
+                    print(f"  ✅ [tushare] 获取公司新闻成功 ({ticker})")
+                    _cache.set_company_news(cache_key, [a.model_dump() for a in articles])
+                    return articles
+            except Exception as ex:
+                print(f"  [tushare] 获取公司新闻失败 ({ticker}): {ex}")
+        # Fallback 2: akshare
+        if _ak_api is not None:
+            try:
+                articles = _ak_api.get_company_news(ticker, end_date, start_date=start_date, limit=limit)
+                if articles:
+                    print(f"  ✅ [akshare] 获取公司新闻成功 ({ticker})")
+                    _cache.set_company_news(cache_key, [a.model_dump() for a in articles])
+                    return articles
+            except Exception as ex:
+                print(f"  [akshare] 获取公司新闻失败 ({ticker}): {ex}")
         return []
 
 
@@ -609,14 +786,46 @@ def get_market_cap(
         if market_cap:
             return float(market_cap)
 
-        # fallback: 从 financial_metrics 获取
+        # fallback 1: 从 financial_metrics 获取
         metrics = get_financial_metrics(ticker, end_date, api_key=api_key)
         if metrics and metrics[0].market_cap:
             return metrics[0].market_cap
 
+        # fallback 2: 用最新收盘价 × 总股本估算
+        shares = info.get("sharesOutstanding")
+        if shares:
+            prices = get_prices(ticker, end_date, end_date, api_key=api_key)
+            if not prices:
+                # 尝试往前取 5 天
+                start_dt = datetime.datetime.strptime(end_date, "%Y-%m-%d") - datetime.timedelta(days=5)
+                prices = get_prices(ticker, start_dt.strftime("%Y-%m-%d"), end_date, api_key=api_key)
+            if prices:
+                latest_price = prices[-1].close
+                estimated = float(latest_price * shares)
+                print(f"  ℹ️ 市值估算 ({ticker}): {latest_price} × {shares:,.0f} = {estimated:,.0f}")
+                return estimated
+
         return None
     except Exception as e:
-        print(f"获取市值失败 ({ticker}): {e}")
+        print(f"  [yfinance] 获取市值失败 ({ticker}): {e}，尝试备份数据源...")
+        # Fallback 1: tushare
+        if _ts_api is not None:
+            try:
+                mc = _ts_api.get_market_cap(ticker, end_date)
+                if mc is not None:
+                    print(f"  ✅ [tushare] 获取市值成功 ({ticker})")
+                    return mc
+            except Exception as ex:
+                print(f"  [tushare] 获取市值失败 ({ticker}): {ex}")
+        # Fallback 2: akshare
+        if _ak_api is not None:
+            try:
+                mc = _ak_api.get_market_cap(ticker, end_date)
+                if mc is not None:
+                    print(f"  ✅ [akshare] 获取市值成功 ({ticker})")
+                    return mc
+            except Exception as ex:
+                print(f"  [akshare] 获取市值失败 ({ticker}): {ex}")
         return None
 
 

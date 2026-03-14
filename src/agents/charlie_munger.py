@@ -1,5 +1,5 @@
 from src.graph.state import AgentState, show_agent_reasoning
-from src.tools.api import get_financial_metrics, get_market_cap, search_line_items, get_insider_trades, get_company_news
+from src.tools.api import get_financial_metrics, get_market_cap, search_line_items, get_insider_trades, get_company_news, get_company_name
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
@@ -822,7 +822,7 @@ def generate_munger_output(
          "仅返回 JSON。推理保持在 120 字以内。请用中文回答。"
          "使用提供的置信度，不要修改。"),
         ("human",
-         "Ticker: {ticker}\n"
+         "Ticker: {ticker}（{company_name}）\n"
          "Facts:\n{facts}\n"
          "Confidence: {confidence}\n"
          "Return exactly:\n"
@@ -835,6 +835,7 @@ def generate_munger_output(
 
     prompt = template.invoke({
         "ticker": ticker,
+        "company_name": get_company_name(ticker),
         "facts": json.dumps(facts_bundle, separators=(",", ":"), ensure_ascii=False),
         "confidence": confidence_hint,
     })

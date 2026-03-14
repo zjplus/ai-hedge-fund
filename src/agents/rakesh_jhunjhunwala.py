@@ -4,7 +4,7 @@ from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 import json
 from typing_extensions import Literal
-from src.tools.api import get_financial_metrics, get_market_cap, search_line_items
+from src.tools.api import get_financial_metrics, get_market_cap, search_line_items, get_company_name
 from src.utils.llm import call_llm
 from src.utils.progress import progress
 
@@ -673,7 +673,7 @@ def generate_jhunjhunwala_output(
                 "human",
                 """基于以下数据，以 Rakesh Jhunjhunwala 的风格创建投资信号：
 
-                Analysis Data for {ticker}:
+                Analysis Data for {ticker}（{company_name}）:
                 {analysis_data}
 
                 Return the trading signal in the following JSON format exactly:
@@ -687,7 +687,7 @@ def generate_jhunjhunwala_output(
         ]
     )
 
-    prompt = template.invoke({"analysis_data": json.dumps(analysis_data, indent=2), "ticker": ticker})
+    prompt = template.invoke({"analysis_data": json.dumps(analysis_data, indent=2), "ticker": ticker, "company_name": get_company_name(ticker)})
 
     # Default fallback signal in case parsing fails
     def create_default_rakesh_jhunjhunwala_signal():
